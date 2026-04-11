@@ -1,4 +1,5 @@
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.geometry.Insets;
@@ -14,28 +15,101 @@ import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.util.Optional;
 
-// Launches the JavaFX Donation Management System GUI.
-// This class builds the interface and connects the buttons,
-// table, form, and status messages to the donation system.
-
+/**
+ * Provides the JavaFX graphical user interface for the Donation Management System.
+ * <p>
+ * This class builds and displays the main application window, including the donation
+ * table, entry form, status messages, and action buttons. It also connects user actions
+ * in the interface to donation management features such as loading records, adding
+ * donations, updating existing records, deleting records, and viewing totals by fund.
+ */
 public class Main extends Application {
-    private final DonationManager donationManager = new DonationManager();
+
+    /**
+     * Manages donation records and database operations for the application.
+     */
+    private DonationManager donationManager;
+
+    /**
+     * Displays donation records in a tabular format.
+     */
     private final TableView<Donation> tableView = new TableView<>();
+
+    /**
+     * Displays status messages to the user at the bottom of the window.
+     */
     private final Label statusLabel = new Label("Ready.");
+
+    /**
+     * Formats monetary values as currency.
+     */
     private final NumberFormat currencyFormat = NumberFormat.getCurrencyInstance();
 
+    /**
+     * Text field for entering the donation ID.
+     */
     private TextField idField;
+
+    /**
+     * Text field for entering the donor's name.
+     */
     private TextField nameField;
+
+    /**
+     * Text field for entering the donor's email address.
+     */
     private TextField emailField;
+
+    /**
+     * Date picker for selecting the donation date.
+     */
     private DatePicker datePicker;
+
+    /**
+     * Text field for entering the donation amount.
+     */
     private TextField amountField;
+
+    /**
+     * Combo box for selecting the donation fund.
+     */
     private ComboBox<String> fundComboBox;
+
+    /**
+     * Combo box for selecting the payment method.
+     */
     private ComboBox<String> paymentComboBox;
 
-    // Builds and displays the main JavaFX window.
-    // This method sets up the main layout sections of the app.
+    /**
+     * Starts the JavaFX application and builds the main window.
+     * <p>
+     * This method prompts the user to choose a database file, creates the main layout,
+     * configures the table and form, wires button actions, and displays the application window.
+     *
+     * @param stage the primary stage for this JavaFX application
+     */
     @Override
     public void start(Stage stage) {
+        FileChooser databaseChooser = new FileChooser();
+        databaseChooser.setTitle("Select SQLite Database File");
+        databaseChooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("SQLite Database", "*.db")
+        );
+
+        File selectedDatabase = databaseChooser.showOpenDialog(stage);
+
+        if (selectedDatabase == null) {
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Database Required");
+            alert.setHeaderText(null);
+            alert.setContentText("You must select a database file to run the program.");
+            alert.showAndWait();
+            Platform.exit();
+            return;
+        }
+
+        donationManager = new DonationManager(selectedDatabase.getAbsolutePath());
+
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(18));
         root.setStyle("-fx-background-color: #f4f8fb;");
@@ -44,7 +118,6 @@ public class Main extends Application {
         root.setTop(header);
         BorderPane.setMargin(header, new Insets(0, 0, 15, 0));
 
-        // Set up the donation table and place it in the center area.
         setupTable();
 
         Label tableSectionLabel = new Label("Donation Records");
@@ -66,12 +139,10 @@ public class Main extends Application {
         root.setCenter(tableSection);
         BorderPane.setMargin(tableSection, new Insets(0, 15, 0, 0));
 
-        // Build the donation input form and place it on the right side.
         VBox formPane = buildFormPane();
         root.setRight(formPane);
         BorderPane.setMargin(formPane, new Insets(0, 0, 0, 5));
 
-        // Build the bottom button bar.
         HBox buttonBar = buildButtonBar(stage);
 
         statusLabel.setStyle(
@@ -80,12 +151,12 @@ public class Main extends Application {
                         "-fx-font-size: 13px;" +
                         "-fx-padding: 3 0 0 2;"
         );
+        statusLabel.setText("Connected to database: " + selectedDatabase.getName());
 
         VBox bottomPane = new VBox(12, buttonBar, statusLabel);
         bottomPane.setPadding(new Insets(15, 0, 0, 0));
         root.setBottom(bottomPane);
 
-        // Make table row selection automatically fill the form.
         setupTableSelectionListener();
 
         Scene scene = new Scene(root, 1380, 740);
@@ -94,7 +165,11 @@ public class Main extends Application {
         stage.show();
     }
 
-    // Builds the title area at the top of the application.
+    /**
+     * Builds the header section displayed at the top of the application window.
+     *
+     * @return a vertical layout containing the application title and subtitle
+     */
     private VBox buildHeader() {
         Label title = new Label("💙 Donation Management System");
         title.setStyle(
@@ -116,8 +191,9 @@ public class Main extends Application {
         return header;
     }
 
-    // Configures the table columns and binds the table
-    // to the observable list of donation records.
+    /**
+     * Configures the donation table and binds it to the observable list of donations.
+     */
     private void setupTable() {
         TableColumn<Donation, String> idCol = new TableColumn<>("ID");
         idCol.setCellValueFactory(data ->
@@ -139,7 +215,6 @@ public class Main extends Application {
         amountCol.setCellValueFactory(data ->
                 new ReadOnlyObjectWrapper<>(data.getValue().getAmount()));
 
-        // Format the amount column as currency.
         amountCol.setCellFactory(column -> new TableCell<>() {
             @Override
             protected void updateItem(Double amount, boolean empty) {
@@ -174,7 +249,6 @@ public class Main extends Application {
                         "-fx-table-cell-border-color: #d9e3ec;"
         );
 
-        // Apply alternating row colors and a selection highlight.
         tableView.setRowFactory(tv -> new TableRow<>() {
             @Override
             protected void updateItem(Donation item, boolean empty) {
@@ -193,7 +267,11 @@ public class Main extends Application {
         });
     }
 
-    // Builds the donation entry form on the right side of the window.
+    /**
+     * Builds the donation form displayed on the right side of the application.
+     *
+     * @return a vertical layout containing form labels and input controls
+     */
     private VBox buildFormPane() {
         Label formTitle = new Label("Donation Form");
         formTitle.setStyle(
@@ -225,7 +303,6 @@ public class Main extends Application {
         paymentComboBox.getItems().addAll("Cash", "Check", "Card");
         paymentComboBox.setValue("Cash");
 
-        // Apply consistent styling to the input controls.
         styleInputControl(idField);
         styleInputControl(nameField);
         styleInputControl(emailField);
@@ -272,7 +349,12 @@ public class Main extends Application {
         return formPane;
     }
 
-    // Creates a styled label for each field name in the form.
+    /**
+     * Creates a styled label for a form field.
+     *
+     * @param text the text to display in the label
+     * @return a styled label for the form
+     */
     private Label styledFormLabel(String text) {
         Label label = new Label(text);
         label.setStyle(
@@ -282,7 +364,11 @@ public class Main extends Application {
         return label;
     }
 
-    // Applies shared styling to all form input controls.
+    /**
+     * Applies consistent visual styling to a form input control.
+     *
+     * @param control the control to style
+     */
     private void styleInputControl(Control control) {
         control.setStyle(
                 "-fx-background-color: white;" +
@@ -293,9 +379,14 @@ public class Main extends Application {
         control.setPrefWidth(190);
     }
 
-    // Builds the main action buttons shown at the bottom of the window.
+    /**
+     * Builds the action button bar displayed at the bottom of the application.
+     *
+     * @param stage the primary stage used for actions such as opening a file chooser
+     * @return a horizontal layout containing the main action buttons
+     */
     private HBox buildButtonBar(Stage stage) {
-        Button loadFileButton = new Button("📂 Load File");
+        Button loadFileButton = new Button("📂 Load Database");
         Button addDonationButton = new Button("➕ Add Donation");
         Button updateDonationButton = new Button("✏️ Update Donation");
         Button deleteDonationButton = new Button("🗑 Delete Donation");
@@ -303,7 +394,6 @@ public class Main extends Application {
         Button clearFormButton = new Button("🧹 Clear Form");
         Button exitButton = new Button("❌ Exit");
 
-        // Apply color styling to each button.
         stylePrimaryButton(loadFileButton, "#d9edf7");
         stylePrimaryButton(addDonationButton, "#d4edda");
         stylePrimaryButton(updateDonationButton, "#fff3cd");
@@ -312,8 +402,7 @@ public class Main extends Application {
         stylePrimaryButton(clearFormButton, "#f0f0f0");
         stylePrimaryButton(exitButton, "#f5d6d6");
 
-        // Connect button actions to their methods.
-        loadFileButton.setOnAction(e -> loadDonationsFromFile(stage));
+        loadFileButton.setOnAction(e -> loadDatabaseFile(stage));
         addDonationButton.setOnAction(e -> addDonation());
         updateDonationButton.setOnAction(e -> updateSelectedDonation());
         deleteDonationButton.setOnAction(e -> deleteSelectedDonation());
@@ -336,7 +425,12 @@ public class Main extends Application {
         return buttonBar;
     }
 
-    // Applies shared styling to action buttons.
+    /**
+     * Applies shared styling to a primary action button.
+     *
+     * @param button the button to style
+     * @param color the background color to apply
+     */
     private void stylePrimaryButton(Button button, String color) {
         button.setStyle(
                 "-fx-background-color: " + color + ";" +
@@ -349,12 +443,15 @@ public class Main extends Application {
         button.setPrefHeight(38);
     }
 
-    // When a user selects a row in the table,
-    // copy that donation's data into the form fields.
+    /**
+     * Sets up automatic form population when a user selects a donation in the table.
+     */
     private void setupTableSelectionListener() {
         tableView.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, selected) -> {
             if (selected != null) {
                 idField.setText(selected.getDonationId());
+                idField.setEditable(false);
+
                 nameField.setText(selected.getDonorName());
                 emailField.setText(selected.getDonorEmail());
                 datePicker.setValue(selected.getDonationDate());
@@ -365,26 +462,34 @@ public class Main extends Application {
         });
     }
 
-    // Opens a file chooser and loads donation data from a selected text file.
-    private void loadDonationsFromFile(Stage stage) {
+    /**
+     * Opens a file chooser and loads donation data from a selected database file.
+     *
+     * @param stage the stage used to display the file chooser dialog
+     */
+    private void loadDatabaseFile(Stage stage) {
         FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Open Donation File");
+        fileChooser.setTitle("Open SQLite Database");
         fileChooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("Text Files", "*.txt")
+                new FileChooser.ExtensionFilter("SQLite Database", "*.db")
         );
 
         File file = fileChooser.showOpenDialog(stage);
 
         if (file == null) {
-            statusLabel.setText("File load cancelled.");
+            statusLabel.setText("Database load cancelled.");
             return;
         }
 
-        int loadedCount = donationManager.loadFromFile(file.getAbsolutePath());
-        statusLabel.setText(loadedCount + " donation(s) loaded from file.");
+        donationManager = new DonationManager(file.getAbsolutePath());
+        tableView.setItems(donationManager.getDonations());
+        tableView.refresh();
+        statusLabel.setText("Loaded " + donationManager.getDonations().size() + " donation(s) from " + file.getName());
     }
 
-    // Reads the form, validates the data, and adds a new donation.
+    /**
+     * Reads form data, validates it, and adds a new donation.
+     */
     private void addDonation() {
         Donation donation = buildDonationFromForm();
         if (donation == null) {
@@ -401,7 +506,9 @@ public class Main extends Application {
         clearFormFieldsOnly();
     }
 
-    // Updates the currently selected donation using the values in the form.
+    /**
+     * Updates the currently selected donation using the values entered in the form.
+     */
     private void updateSelectedDonation() {
         Donation selected = tableView.getSelectionModel().getSelectedItem();
 
@@ -427,7 +534,9 @@ public class Main extends Application {
         }
     }
 
-    // Deletes the selected donation after the user confirms the action.
+    /**
+     * Deletes the currently selected donation after the user confirms the action.
+     */
     private void deleteSelectedDonation() {
         Donation selected = tableView.getSelectionModel().getSelectedItem();
 
@@ -459,8 +568,13 @@ public class Main extends Application {
         }
     }
 
-    // Builds a Donation object from the form fields.
-    // Returns null if validation fails.
+    /**
+     * Builds a donation object from the current form field values.
+     * <p>
+     * If validation fails, this method displays an error message and returns {@code null}.
+     *
+     * @return a valid donation object built from the form, or {@code null} if validation fails
+     */
     private Donation buildDonationFromForm() {
         try {
             String id = idField.getText().trim();
@@ -492,16 +606,22 @@ public class Main extends Application {
         }
     }
 
-    // Clears the form and removes the current table selection.
+    /**
+     * Clears the form and removes the current table selection.
+     */
     private void clearForm() {
         clearFormFieldsOnly();
         tableView.getSelectionModel().clearSelection();
+        idField.setEditable(true);
         statusLabel.setText("Form cleared.");
     }
 
-    // Clears only the field values and resets defaults.
+    /**
+     * Clears only the form field values and restores default selections.
+     */
     private void clearFormFieldsOnly() {
         idField.clear();
+        idField.setEditable(true);
         nameField.clear();
         emailField.clear();
         datePicker.setValue(LocalDate.now());
@@ -510,7 +630,9 @@ public class Main extends Application {
         paymentComboBox.setValue("Cash");
     }
 
-    // Shows total donations by fund and the overall grand total.
+    /**
+     * Displays donation totals by fund and the grand total in an information alert.
+     */
     private void showTotals() {
         double general = donationManager.getTotalByFund("General");
         double missions = donationManager.getTotalByFund("Missions");
@@ -531,7 +653,12 @@ public class Main extends Application {
         alert.showAndWait();
     }
 
-    // Displays an error alert to the user.
+    /**
+     * Displays an error alert to the user.
+     *
+     * @param title the title of the alert window
+     * @param message the error message displayed in the alert
+     */
     private void showError(String title, String message) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.setTitle(title);
@@ -540,7 +667,11 @@ public class Main extends Application {
         alert.showAndWait();
     }
 
-    // Launches the JavaFX application.
+    /**
+     * Launches the JavaFX application.
+     *
+     * @param args command-line arguments passed to the application
+     */
     public static void main(String[] args) {
         launch();
     }
